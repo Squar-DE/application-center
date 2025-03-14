@@ -9,7 +9,7 @@ use strsim::levenshtein;
 
 fn main() {
     let app = Application::builder()
-        .application_id("com.example.AppStore")
+        .application_id("com.SquarDE.ApplicationCenter")
         .build();
 
     app.connect_activate(|app| {
