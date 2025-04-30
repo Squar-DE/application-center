@@ -6,7 +6,10 @@ version = 4
 name = "application-manager"
 version = "0.1.0"
 dependencies = [
+ "glib",
  "gtk4",
+ "libadwaita",
+ "pango",
  "strsim",
 ]
 
@@ -402,6 +405,37 @@ checksum = "8c9c992b02b5b4c94ea26e32fe5bccb7aa7d9f390ab5c1221ff895bc7ea8b652"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "libadwaita"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "500135d29c16aabf67baafd3e7741d48e8b8978ca98bac39e589165c8dc78191"
+dependencies = [
+ "gdk4",
+ "gio",
+ "glib",
+ "gtk4",
+ "libadwaita-sys",
+ "libc",
+ "pango",
+]
+
+[[package]]
+name = "libadwaita-sys"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6680988058c2558baf3f548a370e4e78da3bf7f08469daa822ac414842c912db"
+dependencies = [
+ "gdk4-sys",
+ "gio-sys",
+ "glib-sys",
+ "gobject-sys",
+ "gtk4-sys",
+ "libc",
+ "pango-sys",
+ "system-deps",
 ]
 
 [[package]]

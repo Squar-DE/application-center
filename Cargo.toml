@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gtk4 = "0.9.6"
+adw = { version = "0.7.2", package = "libadwaita" }
+glib = "0.20.9"
+gtk = { package = "gtk4", version = "0.9.6" }
+pango = "0.20.9"
 strsim = "0.10"
