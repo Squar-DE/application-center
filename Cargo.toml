@@ -9,3 +9,4 @@ glib = "0.20.9"
 gtk = { package = "gtk4", version = "0.9.6" }
 pango = "0.20.9"
 strsim = "0.10"
+tokio = { version = "1.45.0", features = ["full"] }
