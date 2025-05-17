@@ -3,13 +3,21 @@ use gtk::prelude::*;
 use tokio::process::Command;
 use adw;
 
-pub fn update(vbox: &GtkBox, header: &adw::HeaderBar) {
+use crate::home::home;
+
+#[allow(deprecated)] // these warnings are way too annoying and clutter everything
+pub fn update(vbox: &GtkBox) {
     // Clear all existing children
     while let Some(child) = vbox.first_child() {
         vbox.remove(&child);
     }
 
-    vbox.append(header);
+    let header = adw::HeaderBar::builder()
+        .title_widget(&gtk::Label::new(Some("Updates -- Application Center")))
+        .show_end_title_buttons(true)
+        .build();
+
+    vbox.append(&header);
 
     let update_button = Button::builder()
         .label("Check for Updates")
@@ -223,13 +231,16 @@ pub fn update(vbox: &GtkBox, header: &adw::HeaderBar) {
         button
     }
     
-    let updates_button = create_nav_button("system-software-update-symbolic", "Updates");
-    let home_button = create_nav_button("go-home-symbolic", "Home");
-    let settings_button = create_nav_button("preferences-system-symbolic", "Settings");
+    let updates_button = create_nav_button("system-software-update", "Updates");
+    let home_button = create_nav_button("go-home", "Home");
+    let settings_button = create_nav_button("preferences-system", "Settings");
     
     nav_bar.append(&updates_button);
     nav_bar.append(&home_button);
     nav_bar.append(&settings_button);
-     
+    
+    home_button.connect_clicked(clone!(@weak vbox => move |_| {
+        home(&vbox);
+    }));
     vbox.append(&nav_bar);
 }

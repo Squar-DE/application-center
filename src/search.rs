@@ -1,8 +1,9 @@
 use adw::prelude::*;
-use gtk::{Box as GtkBox, Orientation, Button, Entry, glib::clone};
+use gtk::{Box as GtkBox, Orientation, Button, glib::clone};
 use tokio::process::Command;
 use pango;
 
+#[allow(deprecated)] // these warnings are way too annoying and clutter everything
 pub fn search_pacman(query: &str, app_list: &gtk::FlowBox, info_revealer: &gtk::Revealer, info_center: &gtk::Box, separator_revealer: &gtk::Revealer) {
     // Clear previous search results
     while let Some(child) = app_list.last_child() {
