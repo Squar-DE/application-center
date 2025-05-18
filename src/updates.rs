@@ -48,23 +48,38 @@ pub fn update(vbox: &GtkBox) {
     scroll.set_min_content_height(300);
 
     update_button.connect_clicked(clone!(@weak status_label, @weak packages_box => move |_| {
-        status_label.set_markup("<span size='large'>Checking for updates...</span>");
-        
-        while let Some(child) = packages_box.last_child() {
-            packages_box.remove(&child);
-        }
+    status_label.set_markup("<span size='large'>Checking for updates...</span>");
+    
+    while let Some(child) = packages_box.last_child() {
+        packages_box.remove(&child);
+    }
 
-        // Spawn async task
-        glib::spawn_future_local(clone!(@weak status_label, @weak packages_box => async move {
-            match Command::new("pacman")
-                .args(["-Qu"])
-                .output()
-                .await 
+    // Spawn async task
+    glib::spawn_future_local(clone!(@weak status_label, @weak packages_box => async move {
+        // First, update the package database
+        let sync_result = Command::new("pkexec")
+            .args(["pacman", "-Sy"])
+            .output()
+            .await;
+            
+        if let Err(e) = sync_result {
+            status_label.set_markup(&format!(
+                "<span size='large' color='red'>Error updating package database:</span>\n<span size='small'>{}</span>",
+                e
+            ));
+            return;
+        }
+        
+        // Now check for updates
+        match Command::new("pacman")
+            .args(["-Qu"])
+            .output()
+            .await 
             {
                 Ok(output) if !output.stdout.is_empty() => {
                     let updates = String::from_utf8_lossy(&output.stdout);
                     let update_count = updates.lines().count();
-                    
+                
                     status_label.set_markup(&format!(
                         "<span size='large' weight='bold'>{}</span>\n<span size='small'>{}</span>",
                         "Updates Available!",
