@@ -1,7 +1,10 @@
 use adw::prelude::*;
-use gtk::{Box as GtkBox, Orientation, Button, glib::clone};
+use gtk::{Box as GtkBox, Orientation, Button, glib::clone, ProgressBar};
 use tokio::process::Command;
 use pango;
+
+// Add this import at the top
+use crate::progress_bar::install_with_progress;
 
 #[allow(deprecated)] // these warnings are way too annoying and clutter everything
 pub fn search_pacman(query: &str, app_list: &gtk::FlowBox, info_revealer: &gtk::Revealer, info_center: &gtk::Box, separator_revealer: &gtk::Revealer) {
@@ -114,6 +117,7 @@ pub fn search_pacman(query: &str, app_list: &gtk::FlowBox, info_revealer: &gtk::
 
             app_list.insert(&button_wrapper, -1);
 
+            
             button.connect_clicked(clone!(@weak info_revealer, @weak info_center, @weak separator_revealer => move |_| {
                 while let Some(child) = info_center.last_child() {
                     info_center.remove(&child);
@@ -136,51 +140,48 @@ pub fn search_pacman(query: &str, app_list: &gtk::FlowBox, info_revealer: &gtk::
                 desc_label.set_halign(gtk::Align::Start);
                 desc_label.set_margin_bottom(10);
 
-                let install_name = app_name_owned.clone();
+                // Create a progress bar for the installation
+                let progress_bar = ProgressBar::new();
+                progress_bar.set_show_text(true);
+                progress_bar.set_margin_bottom(10);
+                progress_bar.set_visible(false); // Initially hidden
+
                 let install_button = Button::with_label("Install");
                 install_button.add_css_class("suggested-action");
                 install_button.add_css_class("pill");
-                install_button.connect_clicked(clone!(@strong install_name => move |_| {
-                    let install_name = install_name.clone();
-                    glib::spawn_future_local(async move {
-                        let result = Command::new("pkexec")
-                            .args(["pacman", "-S", "--noconfirm", &install_name])
-                            .status()
-                            .await;
-                    
-                        match result {
-                            Ok(status) if status.success() => {
+                install_button.connect_clicked(clone!(@strong app_name_owned, @weak progress_bar => move |_| {
+                    let package_name = app_name_owned.clone();
+                    glib::spawn_future_local(clone!(@weak progress_bar => async move {
+                        progress_bar.set_visible(true);
+                        progress_bar.set_fraction(0.0);
+
+                        match install_with_progress(&package_name, progress_bar.clone()).await {
+                            Ok(_) => {
                                 let notification = gtk::MessageDialog::builder()
                                     .message_type(gtk::MessageType::Info)
                                     .buttons(gtk::ButtonsType::Ok)
-                                    .text(&format!("Successfully installed {}", install_name))
+                                    .text(&format!("Successfully installed {}", package_name))
                                     .build();
-                                notification.connect_response(|dialog, _| {
-                                    dialog.close();
-                                });
+                                notification.connect_response(|dialog, _| dialog.close());
                                 notification.show();
                             },
-                            Ok(_) => {
+                            Err(e) => {
                                 let notification = gtk::MessageDialog::builder()
                                     .message_type(gtk::MessageType::Error)
                                     .buttons(gtk::ButtonsType::Ok)
-                                    .text(&format!("Failed to install {}", install_name))
+                                    .text(&format!("Failed to install {}: {}", package_name, e))
                                     .build();
-                                notification.connect_response(|dialog, _| {
-                                    dialog.close();
-                                });
+                                notification.connect_response(|dialog, _| dialog.close());
                                 notification.show();
                             }
-                            Err(err) => {
-                                eprintln!("Error occurred: {}", err);
-                            }
                         }
-                    });
+                    }));
                 }));
 
                 info_center.append(&name_label);
                 info_center.append(&version_label);
                 info_center.append(&desc_label);
+                info_center.append(&progress_bar);
                 info_center.append(&install_button);
 
                 separator_revealer.set_reveal_child(true);

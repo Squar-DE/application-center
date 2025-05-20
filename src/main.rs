@@ -3,8 +3,9 @@ use gtk::{Orientation, Box as GtkBox};
 mod home;
 mod search;
 mod updates;
-
+mod progress_bar;
 use home::home;
+
 #[tokio::main]
 async fn main() {
     let app = Application::builder()
