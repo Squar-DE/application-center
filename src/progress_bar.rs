@@ -67,7 +67,7 @@ pub async fn install_with_progress(package_name: &str, progress_bar: ProgressBar
     let re_download = Regex::new(r"downloading.*?\((\d+)%\)").unwrap();
     
     // Process output in a separate task
-    let progress_handle = glib::MainContext::default().spawn_local(clone!(@weak progress_bar => async move {
+    let _progress_handle = glib::MainContext::default().spawn_local(clone!(@weak progress_bar => async move {
         let mut has_progress = false;
         
         loop {
@@ -167,4 +167,112 @@ pub async fn install_with_progress(package_name: &str, progress_bar: ProgressBar
     } else {
         Err(format!("Installation exited with code: {:?}", status.code()))
     }
+}
+
+#[allow(deprecated)]
+pub async fn uninstall_with_progress(package_name: &str, progress_bar: ProgressBar) -> Result<(), String> {
+    // Set initial state
+    progress_bar.set_fraction(0.0);
+    progress_bar.set_text(Some("Starting uninstallation..."));
+    
+    // Use a shared flag to track when the process is done
+    let uninstall_done = Arc::new(Mutex::new(false));
+    let uninstall_done_clone = uninstall_done.clone();
+    
+    // Start a separate task to pulse the progress bar periodically
+    glib::MainContext::default().spawn_local(clone!(@weak progress_bar => async move {
+        let mut pulse_counter = 0;
+        
+        while !*uninstall_done_clone.lock().unwrap() {
+            // Only pulse if we're still at 0%
+            if progress_bar.fraction() < 0.01 {
+                progress_bar.pulse();
+                
+                // Update text occasionally to show activity
+                pulse_counter += 1;
+                if pulse_counter % 5 == 0 {
+                    let dots = ".".repeat((pulse_counter / 5) % 4);
+                    progress_bar.set_text(Some(&format!("Uninstalling{}", dots)));
+                }
+            }
+            
+            // Sleep to avoid hogging the UI thread
+            sleep(Duration::from_millis(200)).await;
+        }
+    }));
+
+    // Spawn the pacman uninstall process
+    let mut child = Command::new("pkexec")
+        .args(&["pacman", "-R", "--noconfirm", package_name])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn pacman: {}", e))?;
+
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+    
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
+
+    // Process output in a separate task
+    let progress_handle = glib::MainContext::default().spawn_local(clone!(@weak progress_bar => async move {
+        loop {
+            tokio::select! {
+                result = stdout_reader.next_line() => {
+                    match result {
+                        Ok(Some(line)) => {
+                            eprintln!("STDOUT: {}", line);
+                        },
+                        Ok(None) => break,
+                        Err(e) => eprintln!("Error reading stdout: {}", e),
+                    }
+                },
+                result = stderr_reader.next_line() => {
+                    match result {
+                        Ok(Some(line)) => {
+                            eprintln!("STDERR: {}", line);
+                        },
+                        Ok(None) => break,
+                        Err(e) => eprintln!("Error reading stderr: {}", e),
+                    }
+                },
+                else => break,
+            }
+        }
+        
+        // Show completion
+        progress_bar.set_fraction(1.0);
+        progress_bar.set_text(Some("100%"));
+    }));
+
+    // Wait for the uninstallation to complete
+    let status = child.wait().await.map_err(|e| format!("Uninstallation failed: {}", e))?;
+    
+    // Signal the progress bar animation task to stop
+    *uninstall_done.lock().unwrap() = true;
+    
+    // Ensure progress is at 100% 
+    progress_bar.set_fraction(1.0);
+    progress_bar.set_text(Some("100%"));
+    
+    // A small delay to ensure UI updates
+    sleep(Duration::from_millis(100)).await;
+    
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Uninstallation exited with code: {:?}", status.code()))
+    }
+}
+
+// Function to check if a package is installed
+pub async fn is_package_installed(package_name: &str) -> Result<bool, String> {
+    let output = Command::new("pacman")
+        .args(["-Q", package_name])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to check package status: {}", e))?;
+    
+    Ok(output.status.success())
 }
