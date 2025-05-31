@@ -9,7 +9,7 @@ use home::home;
 #[tokio::main]
 async fn main() {
     let app = Application::builder()
-        .application_id("com.SquarDE.ApplicationManager")
+        .application_id("org.SquarDE.ApplicationManager")
         .build();
     app.connect_activate(build_ui);
     app.run(); 
