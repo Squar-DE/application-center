@@ -18,6 +18,8 @@ public class PackageInfo : Object {
 }
 
 public class PacmanGui : Adw.Application {
+    private Gtk.Stack                   updates_stack;
+    private Gtk.FlowBox                 updates_results_flow;
     private Adw.ApplicationWindow       window;
     private Gtk.SearchEntry             search_entry;
     private Gtk.FlowBox                 results_flow;
@@ -59,14 +61,19 @@ public class PacmanGui : Adw.Application {
 
         // Pages
         var home = home_page();  // Now returns Gtk.Widget
-        var updates = new Gtk.Label("Updates page coming soon");
+        var updates = create_updates_page();
         var settings = new Gtk.Label("Settings page coming soon");
 
         nav_stack = new Adw.ViewStack();
         nav_stack.add_titled(home, "home", "Home").set_icon_name("go-home-symbolic");
         nav_stack.add_titled(updates, "updates", "Updates").set_icon_name("system-software-update-symbolic");
         nav_stack.add_titled(settings, "settings", "Settings").set_icon_name("emblem-system-symbolic");
-
+        nav_stack.notify["visible-child"].connect(() => {
+          var current = nav_stack.get_visible_child_name();
+          if (current == "updates") {
+            load_updates_async.begin();
+          }
+        }); 
         nav_bar = new Adw.ViewSwitcherBar();
         nav_bar.set_stack(nav_stack);
         nav_bar.set_reveal(true);
@@ -155,7 +162,7 @@ public class PacmanGui : Adw.Application {
         box.set_valign(Gtk.Align.CENTER);
         box.set_halign(Gtk.Align.CENTER);
         
-        var icon = new Gtk.Image.from_icon_name("system-software-install-symbolic");
+        var icon = new Gtk.Image.from_icon_name("application-x-executable-symbolic");
         icon.set_icon_size(Gtk.IconSize.LARGE);
         icon.add_css_class("dim-label");
         
@@ -724,6 +731,246 @@ public class PacmanGui : Adw.Application {
             }
         }
     }
+
+    private Gtk.Widget create_updates_page() {
+    var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
+    box.set_vexpand(true);
+
+    // Header row with refresh and "Update All" (optional)
+    var header_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 6);
+
+var check_updates_button = new Gtk.Button.with_label("Check for Updates");
+check_updates_button.add_css_class("suggested-action");
+check_updates_button.clicked.connect(() => { check_for_updates_async.begin(); });
+header_box.append(check_updates_button);
+
+var update_all_button = new Gtk.Button.with_label("Update All");
+update_all_button.add_css_class("suggested-action");
+update_all_button.clicked.connect(() => { update_all_packages_async.begin(); });
+header_box.append(update_all_button);
+
+box.append(header_box);
+
+    // Stack for loading/results/empty
+    updates_stack = new Gtk.Stack();
+    updates_stack.set_vexpand(true);
+
+    var loading = create_loading_page();
+    updates_stack.add_named(loading, "loading");
+
+    var empty = create_empty_page();
+    updates_stack.add_named(empty, "empty");
+
+    updates_results_flow = new Gtk.FlowBox();
+    updates_results_flow.set_max_children_per_line(3);
+    updates_results_flow.set_column_spacing(12);
+    updates_results_flow.set_row_spacing(12);
+
+    var results_scroll = new Gtk.ScrolledWindow();
+    results_scroll.set_child(updates_results_flow);
+    updates_stack.add_named(results_scroll, "results");
+
+    box.append(updates_stack);
+
+    return box;
+}
+
+
+private async void check_for_updates_async() {
+    updates_stack.set_visible_child_name("loading");
+    try {
+        // First, sync package databases
+        var sync_proc = new Subprocess.newv({"pkexec", "pacman", "-Sy"},
+            SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE);
+        string sync_output;
+        yield sync_proc.communicate_utf8_async(null, null, out sync_output, null);
+        int sync_status = sync_proc.get_exit_status();
+
+        if (sync_status != 0) {
+            show_error_dialog("Failed to refresh package database:\n" + sync_output);
+            updates_stack.set_visible_child_name("empty");
+            return;
+        }
+
+        // Then, load updates as usual
+        yield load_updates_async();
+    } catch (Error e) {
+        show_error_dialog("Failed to check for updates:\n" + e.message);
+        updates_stack.set_visible_child_name("empty");
+    }
+}
+
+private async void load_updates_async() {
+    updates_stack.set_visible_child_name("loading");
+    // Clear previous results
+    var child = updates_results_flow.get_first_child();
+    while (child != null) {
+        var next = child.get_next_sibling();
+        updates_results_flow.remove(child);
+        child = next;
+    }
+
+    try {
+        var packages = yield get_upgradable_packages();
+        if (packages.length == 0) {
+            updates_stack.set_visible_child_name("empty");
+            return;
+        }
+        foreach (var pkg in packages) {
+            add_update_package_card(pkg);
+        }
+        updates_stack.set_visible_child_name("results");
+    } catch (Error e) {
+        show_error_dialog("Failed to load updates:\n" + e.message);
+        updates_stack.set_visible_child_name("empty");
+    }
+}
+
+
+private void add_update_package_card(PackageInfo package) {
+    var card = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
+    card.add_css_class("card");
+    card.set_size_request(200, 120);
+
+    var content_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 6);
+    content_box.set_margin_top(12);
+    content_box.set_margin_bottom(12);
+    content_box.set_margin_start(12);
+    content_box.set_margin_end(12);
+
+    // Package icon
+    var icon = new Gtk.Image.from_icon_name("system-software-update-symbolic");
+    icon.set_icon_size(Gtk.IconSize.NORMAL);
+    icon.set_halign(Gtk.Align.CENTER);
+
+    // Package name
+    var name_label = new Gtk.Label(package.name);
+    name_label.add_css_class("heading");
+    name_label.set_halign(Gtk.Align.CENTER);
+    name_label.set_ellipsize(Pango.EllipsizeMode.END);
+    name_label.set_max_width_chars(20);
+
+    // Parse version info: "old_version → new_version"
+    string old_version = "", new_version = "";
+    var versions = package.description.split("→");
+    if (versions.length == 2) {
+        old_version = versions[0].strip();
+        new_version = versions[1].strip();
+    }
+
+    // Version row (old_version → new_version)
+    var version_row = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 4);
+    version_row.set_halign(Gtk.Align.CENTER);
+
+    var old_label = new Gtk.Label(old_version);
+    old_label.add_css_class("dim-label");
+
+    var arrow_label = new Gtk.Label("→");
+    arrow_label.add_css_class("dim-label");
+
+    var new_label = new Gtk.Label(new_version);
+    new_label.add_css_class("success"); // This will make it green according to Adwaita/Libadwaita
+
+    version_row.append(old_label);
+    version_row.append(arrow_label);
+    version_row.append(new_label);
+
+    // Update button
+    var update_button = new Gtk.Button.with_label("Update");
+    update_button.add_css_class("suggested-action");
+    update_button.clicked.connect(() => {
+        update_package_async.begin(package.name);
+    });
+
+    content_box.append(icon);
+    content_box.append(name_label);
+    content_box.append(version_row);
+    content_box.append(update_button);
+
+    card.append(content_box);
+
+    // Hover effect
+    var motion_controller = new Gtk.EventControllerMotion();
+    motion_controller.enter.connect(() => {
+        card.add_css_class("card-hover");
+    });
+    motion_controller.leave.connect(() => {
+        card.remove_css_class("card-hover");
+    });
+    card.add_controller(motion_controller);
+
+    updates_results_flow.append(card);
+}
+
+private async PackageInfo[] get_upgradable_packages() throws Error {
+    var packages = new PackageInfo[0];
+    string output;
+    int exit_status;
+
+    var subprocess = new Subprocess.newv({"pacman", "-Qu"},
+        SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE);
+
+    yield subprocess.communicate_utf8_async(null, null, out output, null);
+    exit_status = subprocess.get_exit_status();
+
+    // Treat exit code 1 as "no updates"
+    if (exit_status == 1) {
+        return packages;
+    }
+    if (exit_status != 0) {
+        throw new IOError.FAILED("pacman -Qu failed (" + exit_status.to_string() + ")");
+    }
+
+    var lines = output.split("\n");
+    foreach (var line in lines) {
+        var parts = line.strip().split(" ");
+        if (parts.length >= 4 && parts[2] == "->") {
+            var name = parts[0];
+            var old_version = parts[1];
+            var new_version = parts[3];
+            var desc = old_version + " → " + new_version;
+            packages += new PackageInfo(name, new_version, desc, true);
+        }
+    }
+    return packages;
+}
+
+
+private async void update_package_async(string package_name) {
+    try {
+        var subprocess = new Subprocess.newv({"pkexec", "pacman", "-S", "--noconfirm", package_name},
+            SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE);
+        string output;
+        yield subprocess.communicate_utf8_async(null, null, out output, null);
+        int exit_status = subprocess.get_exit_status();
+        if (exit_status == 0) {
+            show_toast("Updated " + package_name + " successfully");
+            load_updates_async.begin();
+        } else {
+            show_error_dialog("Failed to update " + package_name + ":\n" + output);
+        }
+    } catch (Error e) {
+        show_error_dialog("Failed to update " + package_name + ":\n" + e.message);
+    }
+}
+
+private async void update_all_packages_async() {
+    try {
+        var subprocess = new Subprocess.newv({"pkexec", "pacman", "-Syu", "--noconfirm"},
+            SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE);
+        string output;
+        yield subprocess.communicate_utf8_async(null, null, out output, null);
+        int exit_status = subprocess.get_exit_status();
+        if (exit_status == 0) {
+            show_toast("All packages updated successfully");
+            load_updates_async.begin();
+        } else {
+            show_error_dialog("Failed to update all packages:\n" + output);
+        }
+    } catch (Error e) {
+        show_error_dialog("Failed to update all packages:\n" + e.message);
+    }
+}
     
     private bool confirmation_dialog_open = false;
 
