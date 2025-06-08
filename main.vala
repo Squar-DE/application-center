@@ -18,19 +18,22 @@ public class PackageInfo : Object {
 }
 
 public class PacmanGui : Adw.Application {
-    private Adw.ApplicationWindow window;
-    private Gtk.SearchEntry search_entry;
-    private Gtk.FlowBox results_flow;
-    private Gtk.Stack main_stack;
-    private Gtk.Spinner spinner;
-    private Adw.Leaflet main_leaflet;
-    private Gtk.Box info_panel;
-    private Gtk.Label info_title;
-    private Gtk.Label info_version;
-    private Gtk.Label info_description;
-    private Gtk.Button action_button;
-    private PackageInfo? selected_package = null;
-    private Gtk.Revealer info_revealer;
+    private Adw.ApplicationWindow       window;
+    private Gtk.SearchEntry             search_entry;
+    private Gtk.FlowBox                 results_flow;
+    private Gtk.Stack                   main_stack;
+    private Gtk.Spinner                 spinner;
+    private Adw.Leaflet                 main_leaflet;
+    private Gtk.Box                     info_panel;
+    private Gtk.Label                   info_title;
+    private Gtk.Label                   info_version;
+    private Gtk.Label                   info_description;
+    private Gtk.Button                  action_button;
+    private PackageInfo?                selected_package          = null;
+    private Gtk.Revealer                info_revealer;
+    private Adw.ViewStack               nav_stack;
+    private Adw.ViewSwitcherBar         nav_bar;
+    private Adw.ToolbarView             toolbar_view;
 
     
     public PacmanGui() {
@@ -41,17 +44,41 @@ public class PacmanGui : Adw.Application {
         build_ui();
         window.present();
     }
-    
+   
+
     private void build_ui() {
         window = new Adw.ApplicationWindow(this);
         window.set_title("Pacman Package Manager");
         window.set_default_size(800, 600);
-        
-        // Create a toolbar view to get the header bar
-        var toolbar_view = new Adw.ToolbarView();
-        
+    
+        // Outer layout
+        toolbar_view = new Adw.ToolbarView();
+
         var header_bar = new Adw.HeaderBar();
         toolbar_view.add_top_bar(header_bar);
+
+        // Pages
+        var home = home_page();  // Now returns Gtk.Widget
+        var updates = new Gtk.Label("Updates page coming soon");
+        var settings = new Gtk.Label("Settings page coming soon");
+
+        nav_stack = new Adw.ViewStack();
+        nav_stack.add_titled(home, "home", "Home").set_icon_name("go-home-symbolic");
+        nav_stack.add_titled(updates, "updates", "Updates").set_icon_name("system-software-update-symbolic");
+        nav_stack.add_titled(settings, "settings", "Settings").set_icon_name("emblem-system-symbolic");
+
+        nav_bar = new Adw.ViewSwitcherBar();
+        nav_bar.set_stack(nav_stack);
+        nav_bar.set_reveal(true);
+
+        toolbar_view.set_content(nav_stack);     // CORRECT: one content for toolbar_view
+        toolbar_view.add_bottom_bar(nav_bar);
+
+        window.set_content(toolbar_view);
+    }
+
+    private Gtk.Widget home_page() { 
+
         
         // Main content
         var main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
@@ -118,11 +145,9 @@ public class PacmanGui : Adw.Application {
         info_revealer.child = info_panel;
         main_leaflet.append(main_page);
         main_leaflet.append(info_revealer); 
-        // Start with main page visible
         main_leaflet.set_visible_child(main_page);
         
-        toolbar_view.set_content(main_leaflet);
-        window.set_content(toolbar_view);
+        return main_leaflet;
     }
     
     private Gtk.Widget create_welcome_page() {
@@ -190,72 +215,46 @@ public class PacmanGui : Adw.Application {
     }
     
     private Gtk.Box create_info_panel() {
-        var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
-        box.set_size_request(350, -1);
-        
-         
-        // Content with scrolling
-        var scrolled_content = new Gtk.ScrolledWindow();
-        scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-        scrolled_content.set_vexpand(true);
-        
-        var content_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 24);
-        content_box.set_margin_top(24);
-        content_box.set_margin_bottom(24);
-        content_box.set_margin_start(24);
-        content_box.set_margin_end(24);
-        
-        // Package icon
-        var icon = new Gtk.Image.from_icon_name("application-x-executable-symbolic");
-        icon.set_icon_size(Gtk.IconSize.LARGE);
-        icon.set_halign(Gtk.Align.CENTER);
-        
-        // Package info
-        info_title = new Gtk.Label("Select a package");
-        info_title.add_css_class("title-1");
-        info_title.set_halign(Gtk.Align.CENTER);
+        var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
+        box.set_margin_top(12);
+        box.set_margin_bottom(12);
+        box.set_margin_start(12);
+        box.set_margin_end(12);
+
+        // 🔙 Close button
+        var close_button = new Gtk.Button.from_icon_name("window-close-symbolic");
+            close_button.set_valign(Gtk.Align.START);
+            close_button.set_halign(Gtk.Align.END);
+            close_button.add_css_class("flat");
+            close_button.clicked.connect(() => {
+            main_leaflet.navigate(Adw.NavigationDirection.BACK);
+        });
+
+        box.append(close_button);
+
+        // 🔤 Package info labels
+        info_title = new Gtk.Label("");
         info_title.set_wrap(true);
-        info_title.set_max_width_chars(25);
-        info_title.set_ellipsize(Pango.EllipsizeMode.END);
-        
-        info_version = new Gtk.Label("No version");
-        info_version.add_css_class("dim-label");
-        info_version.set_halign(Gtk.Align.CENTER);
-        info_version.set_max_width_chars(30);
-        info_version.set_ellipsize(Pango.EllipsizeMode.END);
-        
-        var separator = new Gtk.Separator(Gtk.Orientation.HORIZONTAL);
-        separator.set_margin_top(12);
-        separator.set_margin_bottom(12);
-        
-        info_description = new Gtk.Label("No description available");
+        info_title.set_xalign(0);
+        info_title.set_css_classes({ "title-1" });
+
+        info_version = new Gtk.Label("");
+        info_version.set_xalign(0);
+        info_description = new Gtk.Label("");
         info_description.set_wrap(true);
-        info_description.set_wrap_mode(Pango.WrapMode.WORD_CHAR);
-        info_description.set_justify(Gtk.Justification.LEFT);
         info_description.set_xalign(0);
-        info_description.set_max_width_chars(30);
-        
-        // Action button
-        action_button = new Gtk.Button.with_label("Select Package");
-        action_button.set_halign(Gtk.Align.CENTER);
-        action_button.set_size_request(200, -1);
-        action_button.add_css_class("pill");
+
+        box.append(info_title);
+        box.append(info_version);
+        box.append(info_description);
+
+        action_button = new Gtk.Button();
         action_button.set_sensitive(false);
-        action_button.clicked.connect(on_action_clicked);
-        
-        content_box.append(icon);
-        content_box.append(info_title);
-        content_box.append(info_version);
-        content_box.append(separator);
-        content_box.append(info_description);
-        content_box.append(action_button);
-        
-        scrolled_content.set_child(content_box);
-        
-        box.append(scrolled_content);
-        
+        box.append(action_button);
+
         return box;
     }
+
     
     private Gtk.Widget create_empty_page() {
         var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
@@ -576,31 +575,31 @@ public class PacmanGui : Adw.Application {
     }
     
     private void show_package_details(PackageInfo package) {
-    selected_package = package;
+        selected_package = package;
     
-    // Update the info panel content
-    info_title.set_text(package.name);
-    info_version.set_text("Version: " + package.version);
+        // Update the info panel content
+        info_title.set_text(package.name);
+        info_version.set_text("Version: " + package.version);
     
-    var description_text = package.description.length > 0 ? package.description : "No description available.";
-    info_description.set_text(description_text);
+        var description_text = package.description.length > 0 ? package.description : "No description available.";
+        info_description.set_text(description_text);
 
-    action_button.set_sensitive(true);
-    if (package.installed) {
-        action_button.set_label("Uninstall");
-        action_button.remove_css_class("suggested-action");
-        action_button.add_css_class("destructive-action");
-    } else {
-        action_button.set_label("Install");
-        action_button.remove_css_class("destructive-action");
-        action_button.add_css_class("suggested-action");
+        action_button.set_sensitive(true);
+        if (package.installed) {
+            action_button.set_label("Uninstall");
+            action_button.remove_css_class("suggested-action");
+            action_button.add_css_class("destructive-action");
+        } else {
+            action_button.set_label("Install");
+            action_button.remove_css_class("destructive-action");
+            action_button.add_css_class("suggested-action");
+        }
+
+        info_revealer.reveal_child = true;
+
+        main_leaflet.navigate(Adw.NavigationDirection.FORWARD);
+        action_button.clicked.connect(on_action_clicked);
     }
-
-    // 🔽 Add this line to trigger the sliding-in animation
-    info_revealer.reveal_child = true;
-
-    main_leaflet.navigate(Adw.NavigationDirection.FORWARD);
-}
     
     private void on_package_activated(Gtk.FlowBoxChild child) {
         var card = child.get_first_child();
@@ -613,19 +612,25 @@ public class PacmanGui : Adw.Application {
     }
     
     private void on_action_clicked() {
-        if (selected_package == null) return;
-        
-        if (selected_package.installed) {
-            show_confirmation_dialog("Uninstall " + selected_package.name + "?", 
-                                    "This will remove the package from your system.", 
-                                    () => {
-                uninstall_package_async.begin(selected_package.name);
-            });
-        } else {
-            install_package_async.begin(selected_package.name);
-        }
+    if (selected_package == null)
+        return;
+
+    if (selected_package.installed) {
+        show_confirmation_dialog(
+            "Uninstall " + selected_package.name + "?",
+            "This will remove the package from your system.",
+            () => {
+                on_confirm_uninstall.begin();
+            }
+        );
+    } else {
+        install_package_async.begin(selected_package.name);
     }
-    
+}
+    async void on_confirm_uninstall() {
+        yield uninstall_package_async(selected_package.name);
+    }
+ 
     private async void install_package_async(string package_name) {
         try {
             action_button.set_sensitive(false);
@@ -719,23 +724,35 @@ public class PacmanGui : Adw.Application {
         }
     }
     
-    private void show_confirmation_dialog(string title, string message, owned Func callback) {
-        var dialog = new Adw.MessageDialog(window, title, message);
-        dialog.add_response("cancel", "Cancel");
-        dialog.add_response("confirm", "Confirm");
-        dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE);
-        dialog.set_default_response("cancel");
-        dialog.set_close_response("cancel");
-        
-        dialog.response.connect((response) => {
-            if (response == "confirm") {
-                callback();
-            }
-            dialog.close();
-        });
-        
-        dialog.present();
-    }
+    private bool confirmation_dialog_open = false;
+
+private void show_confirmation_dialog(string title, string message, owned Func callback) {
+    if (confirmation_dialog_open)
+        return;  // Prevent multiple dialogs
+
+    confirmation_dialog_open = true;
+
+    var dialog = new Adw.MessageDialog(window, title, message);
+    dialog.set_heading(title);
+    dialog.set_body(message);
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("confirm", "Confirm");
+    dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE);
+    dialog.set_default_response("cancel");
+    dialog.set_close_response("cancel");
+
+    dialog.response.connect((response) => {
+        if (response == "confirm") {
+            callback();
+        }
+
+        confirmation_dialog_open = false;
+        dialog.destroy();  // Always destroy
+    });
+
+    dialog.present();
+}
+
     
     private void show_error_dialog(string message) {
         var dialog = new Adw.MessageDialog(window, "Error", message);
