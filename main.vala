@@ -598,6 +598,7 @@ public class PacmanGui : Adw.Application {
         info_revealer.reveal_child = true;
 
         main_leaflet.navigate(Adw.NavigationDirection.FORWARD);
+        action_button.clicked.disconnect(on_action_clicked);
         action_button.clicked.connect(on_action_clicked);
     }
     
